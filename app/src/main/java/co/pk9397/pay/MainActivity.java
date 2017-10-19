@@ -1,5 +1,6 @@
 package co.pk9397.pay;
 
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.net.wifi.WifiManager;
 import android.os.AsyncTask;
@@ -9,8 +10,10 @@ import android.text.format.Formatter;
 import android.util.Base64;
 import android.util.Log;
 import android.view.View;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -32,17 +35,24 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.Iterator;
-import java.util.Map;
 
 public class MainActivity extends AppCompatActivity {
 
     private AsyncHttpServer server = new AsyncHttpServer();
     private AsyncServer mAsyncServer = new AsyncServer();
 
+    TextView balance;
+    Spinner dropdown;
+    Button pay, bc;
+
     SharedPreferences pref;
     JSONObject nodes = new JSONObject();
     JSONObject nums = new JSONObject();
+
+    int count;
+    double bal;
+    int Limit = 7;
+    boolean consensus_bool = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -71,34 +81,81 @@ public class MainActivity extends AppCompatActivity {
         else {
             setContentView(R.layout.activity_main);
             Toast.makeText(this, "Hi " + pref.getString("num", "client") + "!", Toast.LENGTH_LONG).show();
-        }
 
-        // Genesis Block
-        if(pref.getString("blockchain", "-").equals("-")) {
-            JSONArray blockchain = new JSONArray();
-            JSONObject block = new JSONObject();
+            dropdown = (Spinner)findViewById(R.id.spinner1);
+            balance = (TextView) findViewById(R.id.textView);
+            pay = (Button) findViewById(R.id.button3);
+            bc = (Button) findViewById(R.id.button2);
+
+            // Genesis Block
+            if (pref.getString("blockchain", "-").equals("-")) {
+                JSONArray blockchain = new JSONArray();
+                JSONObject block = new JSONObject();
+                try {
+                    JSONObject transaction = new JSONObject();
+                    transaction.put("sender", "0");
+                    transaction.put("receiver", pref.getString("num", ""));
+                    transaction.put("amount", 15);
+                    block.put("index", 1);
+                    block.put("time", System.currentTimeMillis() / 1000);
+                    block.put("transactions", new JSONArray().put(transaction));
+                    block.put("nounce", 0);
+                    block.put("prehash", "0");
+                    blockchain.put(block);
+                    pref.edit().putString("blockchain", blockchain.toString()).apply();
+                    pref.edit().putString("transactions", new JSONArray().toString()).apply();
+                    Log.i("MainActivity", blockchain.toString());
+                } catch (JSONException e) {
+                    e.printStackTrace();
+                }
+
+            }
+
+            // Default Difficulty
+            if (pref.getInt("difficulty", 0) == 0) {
+                pref.edit().putInt("difficulty", 3).apply();
+            }
+
+            bal = 0;
             try {
-                block.put("index", 1);
-                block.put("time", System.currentTimeMillis()/1000);
-                block.put("transactions", new JSONArray());
-                block.put("nounce", 0);
-                block.put("prehash", "0");
-                blockchain.put(block);
-                pref.edit().putString("blockchain", blockchain.toString()).apply();
-                pref.edit().putString("transactions", new JSONArray().toString()).apply();
-                Log.i("MainActivity", blockchain.toString());
+                bal = get_balance();
             } catch (JSONException e) {
                 e.printStackTrace();
             }
 
-        }
+            balance.setText("Balance: " + bal + "");
 
-        // Default Difficulty
-        if(pref.getInt("difficulty", 0) == 0) {
-            pref.edit().putInt("difficulty", 3).apply();
-        }
+            consensus();
 
-        consensus();
+            pay.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    if(consensus_bool) {
+                        String to = dropdown.getSelectedItem().toString();
+                        EditText amount = (EditText) findViewById(R.id.editText5);
+                        double amt;
+                        if(!amount.getText().toString().isEmpty()) {
+                            amt = Double.parseDouble(amount.getText().toString());
+                            if (to != null && amt > 0 && amt < bal) {
+                                Toast.makeText(MainActivity.this, "You Can Pay", Toast.LENGTH_LONG).show();
+                            } else {
+                                Toast.makeText(MainActivity.this, "Give Valid Input", Toast.LENGTH_LONG).show();
+                            }
+                        }
+                    }
+                    else {
+                        Toast.makeText(MainActivity.this, "Please Wait", Toast.LENGTH_LONG).show();
+                    }
+                }
+            });
+        }
+        bc.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Intent i = new Intent(MainActivity.this, BlockchainActivity.class);
+                startActivity(i);
+            }
+        });
     }
 
     @Override
@@ -131,7 +188,11 @@ public class MainActivity extends AppCompatActivity {
             public void onRequest(AsyncHttpServerRequest request, AsyncHttpServerResponse response) {
                 try {
                     response.code(200);
-                    response.send(new JSONObject(pref.getString("blockchain", "")));
+                    JSONObject res = new JSONObject();
+                    JSONArray blockchain = new JSONArray(pref.getString("blockchain", ""));
+                    res.put("blockchain", blockchain);
+                    res.put("length", blockchain.length());
+                    response.send(res);
                 } catch (JSONException e) {
                     Log.e("MainActivity", e.getMessage(), e);
                 }
@@ -247,16 +308,50 @@ public class MainActivity extends AppCompatActivity {
         return true;
     }
 
+    private double get_balance() throws JSONException {
+        JSONArray blockchain = new JSONArray(pref.getString("blockchain", ""));
+        JSONObject ledger = new JSONObject();
+        for(int i=0; i<blockchain.length(); ++i) {
+            JSONArray transactions = blockchain.getJSONObject(i).getJSONArray("transactions");
+            for(int j=0; j<transactions.length(); ++j) {
+                JSONObject transaction = transactions.getJSONObject(j);
+                String receiver = transaction.getString("receiver");
+                String sender = transaction.getString("sender");
+                double amount = transaction.getDouble("amount");
+                double prev_amount;
+                if(!sender.equals("0")) {
+                    prev_amount = 0;
+                    if(ledger.has(sender)) {
+                        prev_amount = ledger.getDouble(sender);
+                    }
+                    ledger.put(sender, prev_amount - amount);
+                }
+                prev_amount = 0;
+                if(ledger.has(receiver)) {
+                    prev_amount = ledger.getDouble(receiver);
+                }
+                ledger.put(receiver, prev_amount + amount);
+            }
+        }
+        double amount = 0;
+        if(ledger.has(pref.getString("num", ""))) {
+            amount = ledger.getDouble(pref.getString("num", ""));
+            Log.i("Balance From", "" + amount + "");
+        }
+        Log.i("Balance", "" + amount + "");
+        return amount;
+    }
+
     private class get extends AsyncTask<String , Void, String> {
         String server_response;
 
         @Override
         protected String doInBackground(String ... strings) {
-
             URL url;
             HttpURLConnection urlConnection = null;
 
             try {
+                count++;
                 url = new URL(strings[0]);
                 Log.i("URL", url.toString());
                 urlConnection = (HttpURLConnection) url.openConnection();
@@ -282,6 +377,42 @@ public class MainActivity extends AppCompatActivity {
         @Override
         protected void onPostExecute(String s) {
             super.onPostExecute(s);
+            if(count == Limit && nodes.names() != null) {
+                String[] items = new String[nodes.names().length()];
+                for(int i = 0; i<nodes.names().length(); i++){
+                    try {
+                        String host = nodes.names().getString(i);
+                        items[i] = nodes.getString(host);
+                        new get().execute(host + "/blockchain");
+                    } catch (JSONException e) {
+                        e.printStackTrace();
+                    }
+                }
+                dropdown.setAdapter(new ArrayAdapter<>(MainActivity.this, android.R.layout.simple_spinner_dropdown_item, items));
+            }
+            else if(count > Limit) {
+                try {
+                    Log.i("BlockchainConflict", "" + server_response + "");
+                    JSONObject res = new JSONObject(server_response);
+                    JSONArray nblockchain = res.getJSONArray("blockchain");
+                    int nlength = res.getInt("length");
+                    JSONArray blockchain = new JSONArray(pref.getString("blockchain", ""));
+                    if(nlength > blockchain.length() && validate_chain(nblockchain)) {
+                        pref.edit().putString("blockchain", nblockchain.toString()).apply();
+                        Toast.makeText(MainActivity.this, "Blockchain Updated", Toast.LENGTH_SHORT).show();
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+
+            }
+            int num_nodes = 0;
+            if(nodes.names() != null) {
+                num_nodes = nodes.names().length();
+            }
+            if(count == Limit + num_nodes) {
+                consensus_bool = true;
+            }
         }
     }
 
@@ -318,19 +449,11 @@ public class MainActivity extends AppCompatActivity {
         for(int i = subnet.length()-1; subnet.charAt(i) != '.'; --i) {
             subnet.deleteCharAt(i);
         }
-        for (int i=1; i<255; i++){
+        count = 1;
+        for (int i=1; i<Limit; i++){
             String host = "http://" + subnet + i + ":8080";
             new get().execute(host + "/num");
         }
-        // Wait for it
-        for(int i = 0; i<nodes.names().length(); i++) {
-            try {
-                new get().execute(nodes.names().getString(i) + "/blockchain");
-            } catch (JSONException e) {
-                e.printStackTrace();
-            }
-        }
-        // Wait for it
     }
 
 }

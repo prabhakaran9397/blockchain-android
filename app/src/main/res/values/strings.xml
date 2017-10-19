@@ -2,4 +2,6 @@
     <string name="app_name">Pay</string>
     <string name="enter_number">Enter Number</string>
     <string name="save">Save</string>
+    <string name="blockchain">Blockchain</string>
+    <string name="pay">Pay</string>
 </resources>

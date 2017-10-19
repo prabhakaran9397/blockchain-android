@@ -1,5 +1,4 @@
 Todo
 
-1) Finish consensus
-2) Get transaction from user / UI
-3) Broadcast
+1) Get transaction from user
+2) Display all transactions
