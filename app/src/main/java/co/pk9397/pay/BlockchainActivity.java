@@ -3,6 +3,7 @@ package co.pk9397.pay;
 import android.content.SharedPreferences;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.text.method.ScrollingMovementMethod;
 import android.widget.TextView;
 
 public class BlockchainActivity extends AppCompatActivity {
@@ -16,6 +17,7 @@ public class BlockchainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_blockchain);
         pref = getSharedPreferences("settings", 0);
         display = (TextView) findViewById(R.id.textView2);
+        display.setMovementMethod(new ScrollingMovementMethod());
         display.setText("" + formatString(pref.getString("blockchain", "{}")) + "");
     }
 

@@ -7,6 +7,7 @@ import android.os.AsyncTask;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.text.format.Formatter;
+import android.text.method.ScrollingMovementMethod;
 import android.util.Base64;
 import android.util.Log;
 import android.view.View;
@@ -41,7 +42,7 @@ public class MainActivity extends AppCompatActivity {
     private AsyncHttpServer server = new AsyncHttpServer();
     private AsyncServer mAsyncServer = new AsyncServer();
 
-    TextView balance;
+    TextView balance, trans;
     Spinner dropdown;
     Button pay, bc;
 
@@ -50,7 +51,6 @@ public class MainActivity extends AppCompatActivity {
     JSONObject nums = new JSONObject();
 
     int count;
-    double bal;
     int Limit = 7;
     boolean consensus_bool = false;
 
@@ -84,6 +84,8 @@ public class MainActivity extends AppCompatActivity {
 
             dropdown = (Spinner)findViewById(R.id.spinner1);
             balance = (TextView) findViewById(R.id.textView);
+            trans = (TextView) findViewById(R.id.textView3);
+            trans.setMovementMethod(new ScrollingMovementMethod());
             pay = (Button) findViewById(R.id.button3);
             bc = (Button) findViewById(R.id.button2);
 
@@ -116,15 +118,9 @@ public class MainActivity extends AppCompatActivity {
                 pref.edit().putInt("difficulty", 3).apply();
             }
 
-            bal = 0;
-            try {
-                bal = get_balance();
-            } catch (JSONException e) {
-                e.printStackTrace();
-            }
-
-            balance.setText("Balance: " + bal + "");
-
+            update_balance();
+            balance.setText("Balance: " + pref.getFloat("balance", 0) + "");
+            trans.setText("" + formatString(pref.getString("transactions", "{}")) + "");
             consensus();
 
             pay.setOnClickListener(new View.OnClickListener() {
@@ -136,8 +132,21 @@ public class MainActivity extends AppCompatActivity {
                         double amt;
                         if(!amount.getText().toString().isEmpty()) {
                             amt = Double.parseDouble(amount.getText().toString());
+                            double bal = pref.getFloat("balance", 0);
                             if (to != null && amt > 0 && amt < bal) {
-                                Toast.makeText(MainActivity.this, "You Can Pay", Toast.LENGTH_LONG).show();
+                                // Make Transaction
+                                JSONObject t = new JSONObject();
+                                try {
+                                    t.put("sender", pref.getString("num", ""));
+                                    t.put("receiver", to);
+                                    t.put("amount", amt);
+                                    new_transaction(t);
+                                } catch (JSONException e) {
+                                    e.printStackTrace();
+                                }
+                                balance.setText("Balance: " + pref.getFloat("balance", 0) + "");
+                                trans.setText("" + formatString(pref.getString("transactions", "{}")) + "");
+                                Toast.makeText(MainActivity.this, "Transaction Made!", Toast.LENGTH_LONG).show();
                             } else {
                                 Toast.makeText(MainActivity.this, "Give Valid Input", Toast.LENGTH_LONG).show();
                             }
@@ -148,14 +157,14 @@ public class MainActivity extends AppCompatActivity {
                     }
                 }
             });
+            bc.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    Intent i = new Intent(MainActivity.this, BlockchainActivity.class);
+                    startActivity(i);
+                }
+            });
         }
-        bc.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                Intent i = new Intent(MainActivity.this, BlockchainActivity.class);
-                startActivity(i);
-            }
-        });
     }
 
     @Override
@@ -201,6 +210,21 @@ public class MainActivity extends AppCompatActivity {
         server.listen(mAsyncServer, 8080);
     }
 
+    private void new_transaction(JSONObject transaction) {
+        JSONArray transactions = null;
+        try {
+            transactions = new JSONArray(pref.getString("transactions", ""));
+            transactions.put(transaction);
+            pref.edit().putString("transactions", transactions.toString()).apply();
+            if(transactions.length() == 5) {
+                mine();
+            }
+            update_balance();
+        } catch (JSONException e) {
+            e.printStackTrace();
+        }
+    }
+
     private String hash(String text) {
         MessageDigest md = null;
         try {
@@ -224,7 +248,7 @@ public class MainActivity extends AppCompatActivity {
 
         //Validate
         JSONArray unsurechain = new JSONArray(pref.getString("blockchain", ""));
-        unsurechain.put(new JSONObject().put("transactions", pref.getString("transactions", "")));
+        unsurechain.put(new JSONObject().put("transactions", new JSONArray(pref.getString("transactions", ""))));
 
         if(validate_transactions(unsurechain)) {
 
@@ -308,38 +332,45 @@ public class MainActivity extends AppCompatActivity {
         return true;
     }
 
-    private double get_balance() throws JSONException {
-        JSONArray blockchain = new JSONArray(pref.getString("blockchain", ""));
-        JSONObject ledger = new JSONObject();
-        for(int i=0; i<blockchain.length(); ++i) {
-            JSONArray transactions = blockchain.getJSONObject(i).getJSONArray("transactions");
-            for(int j=0; j<transactions.length(); ++j) {
-                JSONObject transaction = transactions.getJSONObject(j);
-                String receiver = transaction.getString("receiver");
-                String sender = transaction.getString("sender");
-                double amount = transaction.getDouble("amount");
-                double prev_amount;
-                if(!sender.equals("0")) {
-                    prev_amount = 0;
-                    if(ledger.has(sender)) {
-                        prev_amount = ledger.getDouble(sender);
+    private void update_balance() {
+        JSONArray blockchain = null;
+        try {
+            blockchain = new JSONArray(pref.getString("blockchain", ""));
+            blockchain.put(new JSONObject().put("transactions", new JSONArray(pref.getString("transactions", ""))));
+            Log.e("Balance", "" + formatString(blockchain.toString()));
+            JSONObject ledger = new JSONObject();
+            for(int i=0; i<blockchain.length(); ++i) {
+                JSONArray transactions = blockchain.getJSONObject(i).getJSONArray("transactions");
+                for(int j=0; j<transactions.length(); ++j) {
+                    JSONObject transaction = transactions.getJSONObject(j);
+                    String receiver = transaction.getString("receiver");
+                    String sender = transaction.getString("sender");
+                    double amount = transaction.getDouble("amount");
+                    double prev_amount;
+                    if(!sender.equals("0")) {
+                        prev_amount = 0;
+                        if(ledger.has(sender)) {
+                            prev_amount = ledger.getDouble(sender);
+                        }
+                        ledger.put(sender, prev_amount - amount);
                     }
-                    ledger.put(sender, prev_amount - amount);
+                    prev_amount = 0;
+                    if(ledger.has(receiver)) {
+                        prev_amount = ledger.getDouble(receiver);
+                    }
+                    ledger.put(receiver, prev_amount + amount);
                 }
-                prev_amount = 0;
-                if(ledger.has(receiver)) {
-                    prev_amount = ledger.getDouble(receiver);
-                }
-                ledger.put(receiver, prev_amount + amount);
             }
+            double amount = 0;
+            if(ledger.has(pref.getString("num", ""))) {
+                amount = ledger.getDouble(pref.getString("num", ""));
+                Log.i("Balance From", "" + amount + "");
+            }
+            Log.i("Balance", "" + amount + "");
+            pref.edit().putFloat("balance", Float.parseFloat(String.valueOf(amount))).apply();
+        } catch (JSONException e) {
+            e.printStackTrace();
         }
-        double amount = 0;
-        if(ledger.has(pref.getString("num", ""))) {
-            amount = ledger.getDouble(pref.getString("num", ""));
-            Log.i("Balance From", "" + amount + "");
-        }
-        Log.i("Balance", "" + amount + "");
-        return amount;
     }
 
     private class get extends AsyncTask<String , Void, String> {
@@ -454,6 +485,38 @@ public class MainActivity extends AppCompatActivity {
             String host = "http://" + subnet + i + ":8080";
             new get().execute(host + "/num");
         }
+    }
+
+    public static String formatString(String text){
+
+        StringBuilder json = new StringBuilder();
+        String indentString = "";
+
+        for (int i = 0; i < text.length(); i++) {
+            char letter = text.charAt(i);
+            switch (letter) {
+                case '{':
+                case '[':
+                    json.append("\n").append(indentString).append(letter).append("\n");
+                    indentString = indentString + "\t";
+                    json.append(indentString);
+                    break;
+                case '}':
+                case ']':
+                    indentString = indentString.replaceFirst("\t", "");
+                    json.append("\n").append(indentString).append(letter);
+                    break;
+                case ',':
+                    json.append(letter).append("\n").append(indentString);
+                    break;
+
+                default:
+                    json.append(letter);
+                    break;
+            }
+        }
+
+        return json.toString();
     }
 
 }
