@@ -27,7 +27,7 @@
 
     <Button
         android:id="@+id/button2"
-        android:layout_width="0dp"
+        android:layout_width="146dp"
         android:layout_height="51dp"
         android:text="@string/blockchain"
         tools:layout_constraintRight_creator="1"
@@ -35,9 +35,9 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintRight_toRightOf="parent"
         tools:layout_constraintLeft_creator="1"
-        android:layout_marginBottom="34dp"
+        android:layout_marginBottom="31dp"
         app:layout_constraintLeft_toLeftOf="parent"
-        app:layout_constraintHorizontal_bias="0.505"
+        app:layout_constraintHorizontal_bias="0.994"
         android:layout_marginStart="25dp"
         android:layout_marginEnd="25dp"
         android:layout_marginLeft="25dp"
@@ -132,5 +132,19 @@
         android:layout_marginEnd="56dp"
         android:layout_marginLeft="56dp"
         android:layout_marginRight="56dp" />
+
+    <Button
+        android:id="@+id/button4"
+        android:layout_width="146dp"
+        android:layout_height="0dp"
+        android:text="Force Scan"
+        tools:layout_constraintTop_creator="1"
+        tools:layout_constraintBottom_creator="1"
+        android:layout_marginStart="24dp"
+        app:layout_constraintBottom_toBottomOf="@+id/button2"
+        tools:layout_constraintLeft_creator="1"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintTop_toTopOf="@+id/button2"
+        android:layout_marginLeft="24dp" />
 
 </android.support.constraint.ConstraintLayout>

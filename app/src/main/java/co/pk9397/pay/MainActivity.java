@@ -37,9 +37,7 @@ import java.net.InetAddress;
 import java.net.URL;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 
 public class MainActivity extends AppCompatActivity {
@@ -49,13 +47,15 @@ public class MainActivity extends AppCompatActivity {
 
     TextView balance, trans, progperc;
     Spinner dropdown;
-    Button pay, bc;
+    Button pay, bc, con;
 
     SharedPreferences pref;
 
     boolean consensus_bool = false;
 
     Set<String> nums = new HashSet<String>();
+    Set<String> nodes = new HashSet<String>();
+    JSONObject current_transaction = new JSONObject();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -92,6 +92,7 @@ public class MainActivity extends AppCompatActivity {
             trans.setMovementMethod(new ScrollingMovementMethod());
             pay = (Button) findViewById(R.id.button3);
             bc = (Button) findViewById(R.id.button2);
+            con = (Button) findViewById(R.id.button4);
 
             // Genesis Block
             if (pref.getString("blockchain", "-").equals("-")) {
@@ -109,7 +110,9 @@ public class MainActivity extends AppCompatActivity {
                     block.put("prehash", "0");
                     blockchain.put(block);
                     pref.edit().putString("blockchain", blockchain.toString()).apply();
-                    pref.edit().putString("transactions", new JSONArray().toString()).apply();
+                    JSONArray transactions = new JSONArray();
+                    transactions.put(transaction);
+                    pref.edit().putString("transactions", transactions.toString()).apply();
                     Log.i("MainActivity", blockchain.toString());
                 } catch (JSONException e) {
                     e.printStackTrace();
@@ -119,13 +122,12 @@ public class MainActivity extends AppCompatActivity {
 
             // Default Difficulty
             if (pref.getInt("difficulty", 0) == 0) {
-                pref.edit().putInt("difficulty", 3).apply();
+                pref.edit().putInt("difficulty", 2).apply();
             }
 
             update_balance();
             balance.setText("Balance: " + pref.getFloat("balance", 0) + "");
             trans.setText("" + formatString(pref.getString("transactions", "{}")) + "");
-            new consensus().execute();
 
             pay.setOnClickListener(new View.OnClickListener() {
                 @Override
@@ -148,10 +150,8 @@ public class MainActivity extends AppCompatActivity {
                                 } catch (JSONException e) {
                                     e.printStackTrace();
                                 }
-                                balance.setText("Balance: " + pref.getFloat("balance", 0) + "");
-                                trans.setText("" + formatString(pref.getString("transactions", "{}")) + "");
                                 amount.setText("");
-                                Toast.makeText(MainActivity.this, "Transaction Made!", Toast.LENGTH_LONG).show();
+                                Toast.makeText(MainActivity.this, "Transaction Queued!", Toast.LENGTH_LONG).show();
                             } else {
                                 Toast.makeText(MainActivity.this, "Give Valid Input", Toast.LENGTH_LONG).show();
                             }
@@ -167,6 +167,12 @@ public class MainActivity extends AppCompatActivity {
                 public void onClick(View v) {
                     Intent i = new Intent(MainActivity.this, BlockchainActivity.class);
                     startActivity(i);
+                }
+            });
+            con.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    new consensus().execute("");
                 }
             });
         }
@@ -193,9 +199,11 @@ public class MainActivity extends AppCompatActivity {
                     response.code(200);
                     JSONObject res = new JSONObject();
                     JSONArray blockchain = new JSONArray(pref.getString("blockchain", ""));
+                    JSONArray transactions = new JSONArray(pref.getString("transactions", ""));
                     res.put("num",pref.getString("num", "0"));
                     res.put("blockchain", blockchain);
                     res.put("length", blockchain.length());
+                    res.put("transactions", transactions);
                     response.send(res);
                 } catch (JSONException e) {
                     Log.e("MainActivity", e.getMessage(), e);
@@ -206,15 +214,12 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void new_transaction(JSONObject transaction) {
-        JSONArray transactions = null;
         try {
-            transactions = new JSONArray(pref.getString("transactions", ""));
+            JSONArray transactions = new JSONArray(pref.getString("transactions", ""));
             transactions.put(transaction);
             pref.edit().putString("transactions", transactions.toString()).apply();
-            if(transactions.length() >= 5) {
-                mine();
-            }
-            update_balance();
+            current_transaction = transaction;
+            new consensus().execute("mine");
         } catch (JSONException e) {
             e.printStackTrace();
         }
@@ -239,41 +244,6 @@ public class MainActivity extends AppCompatActivity {
         return blockchain.getJSONObject(blockchain.length()-1).toString();
     }
 
-    private void mine() throws JSONException {
-
-        consensus_bool = false;
-        new consensus().execute();
-
-        String lb = last_block();
-        long nounce = 0;
-        int difficulty = pref.getInt("difficulty", 3);
-        // Proof of Work
-        while (!hash(lb + String.valueOf(nounce)).substring(0, difficulty).equals(String.format("%0" + difficulty + "d", 0))) {
-            nounce++;
-        }
-        // Get Reward
-        JSONArray transactions = new JSONArray(pref.getString("transactions", ""));
-        JSONObject transaction = new JSONObject();
-        transaction.put("sender", "0");
-        transaction.put("receiver", pref.getString("num", ""));
-        transaction.put("amount", 10);
-        transactions.put(transaction);
-
-        // Create New Block
-        JSONArray blockchain = new JSONArray(pref.getString("blockchain", ""));
-        JSONObject block = new JSONObject();
-        block.put("index", blockchain.length() + 1);
-        block.put("time", System.currentTimeMillis() / 1000);
-        block.put("transactions", transactions);
-        block.put("nounce", nounce);
-        block.put("prehash", hash(lb));
-        blockchain.put(block);
-
-        // Save Blockchain and Clear Transactions
-        pref.edit().putString("transactions", new JSONArray().toString()).apply();
-        pref.edit().putString("blockchain", blockchain.toString()).apply();
-    }
-
     private boolean validate_chain(JSONArray blockchain) throws JSONException {
         JSONObject curr, prev = blockchain.getJSONObject(0);
         int difficulty = pref.getInt("difficulty", 3);
@@ -290,33 +260,28 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void update_balance() {
-        JSONArray blockchain = null;
         try {
-            blockchain = new JSONArray(pref.getString("blockchain", ""));
-            blockchain.put(new JSONObject().put("transactions", new JSONArray(pref.getString("transactions", ""))));
-            Log.e("Balance", "" + formatString(blockchain.toString()));
+            JSONArray transactions = new JSONArray(pref.getString("transactions", ""));
+            Log.e("BALANCE TRANS", transactions.toString());
             JSONObject ledger = new JSONObject();
-            for(int i=0; i<blockchain.length(); ++i) {
-                JSONArray transactions = blockchain.getJSONObject(i).getJSONArray("transactions");
-                for(int j=0; j<transactions.length(); ++j) {
-                    JSONObject transaction = transactions.getJSONObject(j);
-                    String receiver = transaction.getString("receiver");
-                    String sender = transaction.getString("sender");
-                    double amount = transaction.getDouble("amount");
-                    double prev_amount;
-                    if(!sender.equals("0")) {
-                        prev_amount = 0;
-                        if(ledger.has(sender)) {
-                            prev_amount = ledger.getDouble(sender);
-                        }
-                        ledger.put(sender, prev_amount - amount);
-                    }
+            for(int j=0; j<transactions.length(); ++j) {
+                JSONObject transaction = transactions.getJSONObject(j);
+                String receiver = transaction.getString("receiver");
+                String sender = transaction.getString("sender");
+                double amount = transaction.getDouble("amount");
+                double prev_amount;
+                if(!sender.equals("0")) {
                     prev_amount = 0;
-                    if(ledger.has(receiver)) {
-                        prev_amount = ledger.getDouble(receiver);
+                    if(ledger.has(sender)) {
+                        prev_amount = ledger.getDouble(sender);
                     }
-                    ledger.put(receiver, prev_amount + amount);
+                    ledger.put(sender, prev_amount - amount);
                 }
+                prev_amount = 0;
+                if(ledger.has(receiver)) {
+                    prev_amount = ledger.getDouble(receiver);
+                }
+                ledger.put(receiver, prev_amount + amount);
             }
             double amount = 0;
             if(ledger.has(pref.getString("num", ""))) {
@@ -331,28 +296,17 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private class consensus extends AsyncTask<String, String, String> {
-
+        String server_response;
         @Override
         protected String doInBackground(String ... strings) {
             try
             {
-                WifiManager wm = (WifiManager) getSystemService(WIFI_SERVICE);
-                String myip = Formatter.formatIpAddress(wm.getConnectionInfo().getIpAddress());
-                InetAddress host;
-                Log.e("PING", "STARTED");
-                host = InetAddress.getByName(String.valueOf(myip));
-                byte[] ip = host.getAddress();
+                if(strings[0].equals("mine")) {
 
-                for(int i=1; i<255; i++)
-                {
-                    try {
-                        ip[3] = (byte) i;
-                        InetAddress address = InetAddress.getByAddress(ip);
-                        publishProgress(address.toString().substring(1, address.toString().length()));
-                        String server_response;
-                        if (address.isReachable(100)) {
-                            Log.e("PING", "http:/" + address.toString() + ":8080/");
-                            URL url = new URL("http:/" + address.toString() + ":8080/blockchain");
+                    for (String fullpath : nodes) {
+                        try {
+                            Log.e("PING", fullpath);
+                            URL url = new URL(fullpath);
                             HttpURLConnection urlConnection = (HttpURLConnection) url.openConnection();
                             int responseCode = urlConnection.getResponseCode();
 
@@ -362,23 +316,97 @@ public class MainActivity extends AppCompatActivity {
 
                                 JSONObject res = new JSONObject(server_response);
                                 JSONArray nblockchain = res.getJSONArray("blockchain");
+                                JSONArray ntransactions = res.getJSONArray("transactions");
                                 int nlength = res.getInt("length");
                                 nums.add(res.getString("num"));
+                                nodes.add(fullpath);
                                 JSONArray blockchain = new JSONArray(pref.getString("blockchain", ""));
-                                if(nlength > blockchain.length() && validate_chain(nblockchain)) {
+                                if (nlength > blockchain.length() && validate_chain(nblockchain)) {
                                     pref.edit().putString("blockchain", nblockchain.toString()).apply();
-                                    Toast.makeText(MainActivity.this, "Blockchain Updated", Toast.LENGTH_SHORT).show();
+                                    pref.edit().putString("transactions", ntransactions.toString()).apply();
                                 }
                             }
+                        } catch (Exception e) {
+                            e.printStackTrace();
                         }
-                    } catch(Exception e1) {
-                        e1.printStackTrace();
                     }
+
+                    String lb = last_block();
+                    long nounce = 0;
+                    int difficulty = pref.getInt("difficulty", 3);
+                    // Proof of Work
+                    while (!hash(lb + String.valueOf(nounce)).substring(0, difficulty).equals(String.format("%0" + difficulty + "d", 0))) {
+                        nounce++;
+                    }
+                    // Get Reward
+                    JSONArray transactions = new JSONArray();
+                    transactions.put(current_transaction);
+                    JSONObject transaction = new JSONObject();
+                    transaction.put("sender", "0");
+                    transaction.put("receiver", pref.getString("num", ""));
+                    transaction.put("amount", 0.1);
+                    transactions.put(transaction);
+
+                    // Create New Block
+                    JSONArray blockchain = new JSONArray(pref.getString("blockchain", ""));
+                    JSONObject block = new JSONObject();
+                    block.put("index", blockchain.length() + 1);
+                    block.put("time", System.currentTimeMillis() / 1000);
+                    block.put("transactions", transactions);
+                    block.put("nounce", nounce);
+                    block.put("prehash", hash(lb));
+                    blockchain.put(block);
+
+                    // Save Blockchain
+                    pref.edit().putString("blockchain", blockchain.toString()).apply();
+                    current_transaction = null;
+                }
+                else {
+                    WifiManager wm = (WifiManager) getSystemService(WIFI_SERVICE);
+                    String myip = Formatter.formatIpAddress(wm.getConnectionInfo().getIpAddress());
+                    InetAddress host;
+                    Log.e("PING", "STARTED");
+                    host = InetAddress.getByName(String.valueOf(myip));
+                    byte[] ip = host.getAddress();
+
+                    for (int i = 1; i < 255; i++) {
+                        try {
+                            ip[3] = (byte) i;
+                            InetAddress address = InetAddress.getByAddress(ip);
+                            publishProgress(address.toString().substring(1, address.toString().length()));
+                            if (!address.toString().equals("/" + myip) && address.isReachable(100)) {
+                                String fullpath = "http:/" + address.toString() + ":8080/blockchain";
+                                Log.e("PING", fullpath);
+                                URL url = new URL(fullpath);
+                                HttpURLConnection urlConnection = (HttpURLConnection) url.openConnection();
+                                int responseCode = urlConnection.getResponseCode();
+
+                                if (responseCode == HttpURLConnection.HTTP_OK) {
+                                    server_response = readStream(urlConnection.getInputStream());
+                                    Log.v("CURL", server_response);
+
+                                    JSONObject res = new JSONObject(server_response);
+                                    JSONArray nblockchain = res.getJSONArray("blockchain");
+                                    JSONArray ntransactions = res.getJSONArray("transactions");
+                                    int nlength = res.getInt("length");
+                                    nums.add(res.getString("num"));
+                                    nodes.add(fullpath);
+                                    JSONArray blockchain = new JSONArray(pref.getString("blockchain", ""));
+                                    if (nlength > blockchain.length() && validate_chain(nblockchain)) {
+                                        pref.edit().putString("blockchain", nblockchain.toString()).apply();
+                                        pref.edit().putString("transactions", ntransactions.toString()).apply();
+                                    }
+                                }
+                            }
+                        } catch (Exception e1) {
+                            e1.printStackTrace();
+                        }
+                    }
+                    Log.e("PING", "ENDED");
                 }
             } catch(Exception e1) {
                 e1.printStackTrace();
             }
-            Log.e("PING", "ENDED");
             return null;
         }
 
@@ -389,11 +417,21 @@ public class MainActivity extends AppCompatActivity {
         }
 
         @Override
+        protected void onPreExecute() {
+            super.onPreExecute();
+            consensus_bool = false;
+        }
+
+        @Override
         protected void onPostExecute(String s) {
             super.onPostExecute(s);
             dropdown.setAdapter(new ArrayAdapter<>(MainActivity.this, android.R.layout.simple_spinner_dropdown_item, nums.toArray()));
             consensus_bool = true;
             progperc.setText("");
+            update_balance();
+            balance.setText("Balance: " + pref.getFloat("balance", 0) + "");
+            trans.setText("" + formatString(pref.getString("transactions", "{}")) + "");
+            Toast.makeText(MainActivity.this, "Consensus Met", Toast.LENGTH_LONG).show();
         }
     }
 
