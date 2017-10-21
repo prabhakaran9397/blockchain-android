@@ -134,13 +134,14 @@ public class MainActivity extends AppCompatActivity {
                 @Override
                 public void onClick(View v) {
                     if(consensus_bool) {
+                        try {
                         String to = dropdown.getSelectedItem().toString();
                         EditText amount = (EditText) findViewById(R.id.editText5);
                         double amt;
                         if(!amount.getText().toString().isEmpty()) {
                             amt = Double.parseDouble(amount.getText().toString());
                             double bal = pref.getFloat("balance", 0);
-                            if (to != null && amt > 0 && amt < bal) {
+                            if (to != null && amt > 0 && amt <= bal) {
                                 // Make Transaction
                                 JSONObject t = new JSONObject();
                                 try {
@@ -157,9 +158,13 @@ public class MainActivity extends AppCompatActivity {
                                 Toast.makeText(MainActivity.this, "Give Valid Input", Toast.LENGTH_LONG).show();
                             }
                         }
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                            Toast.makeText(MainActivity.this, "Two or More Nodes Needed", Toast.LENGTH_LONG).show();
+                        }
                     }
                     else {
-                        Toast.makeText(MainActivity.this, "Please Wait", Toast.LENGTH_LONG).show();
+                        Toast.makeText(MainActivity.this, "Please Wait", Toast.LENGTH_SHORT).show();
                     }
                 }
             });
@@ -373,6 +378,7 @@ public class MainActivity extends AppCompatActivity {
 
                     // Save Blockchain
                     pref.edit().putString("blockchain", blockchain.toString()).apply();
+                    pref.edit().putString("transactions", all_transactions.toString()).apply();
                     current_transaction = null;
                 }
                 else {
