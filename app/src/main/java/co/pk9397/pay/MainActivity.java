@@ -257,7 +257,7 @@ public class MainActivity extends AppCompatActivity {
         int difficulty = pref.getInt("difficulty", 2);
         for(int i=1; i<blockchain.length(); ++i) {
             curr = blockchain.getJSONObject(i);
-            Log.e("VALIDATE", prev.toString());
+            Log.e("VALIDATE", "1");
             if(!curr.getString("prehash").equals(hash(prev.toString()))) {
                 return false;
             }
@@ -265,6 +265,8 @@ public class MainActivity extends AppCompatActivity {
             if(!hash(prev + String.valueOf(curr.getInt("nounce"))).substring(0, difficulty).equals(String.format("%0" + difficulty + "d", 0))){
                 return false;
             }
+            Log.e("VALIDATE", "3");
+            prev = curr;
         }
         return true;
     }
