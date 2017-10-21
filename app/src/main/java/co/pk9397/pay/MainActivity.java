@@ -8,7 +8,6 @@ import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.text.format.Formatter;
 import android.text.method.ScrollingMovementMethod;
-import android.util.Base64;
 import android.util.Log;
 import android.view.View;
 import android.widget.ArrayAdapter;
@@ -37,6 +36,7 @@ import java.net.InetAddress;
 import java.net.URL;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -125,6 +125,7 @@ public class MainActivity extends AppCompatActivity {
                 pref.edit().putInt("difficulty", 2).apply();
             }
 
+            new consensus().execute("");
             update_balance();
             balance.setText("Balance: " + pref.getFloat("balance", 0) + "");
             trans.setText("" + formatString(pref.getString("transactions", "{}")) + "");
@@ -225,17 +226,24 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private String hash(String text) {
-        MessageDigest md = null;
+    private String hash(String input) {
         try {
-            md = MessageDigest.getInstance("SHA1");
-            md.update(text.getBytes());
-            byte[] digest = md.digest();
-            return Base64.encodeToString(digest, Base64.DEFAULT);
+            char[] chars = input.toCharArray();
+            Arrays.sort(chars);
+            String sorted = new String(chars);
+            Log.e("HASHINPUT", sorted);
+            MessageDigest mDigest = MessageDigest.getInstance("SHA1");
+            byte[] result = mDigest.digest(sorted.getBytes());
+            StringBuffer sb = new StringBuffer();
+            for (int i = 0; i < result.length; i++) {
+                sb.append(Integer.toString((result[i] & 0xff) + 0x100, 16).substring(1));
+            }
+            Log.e("HASHINPUT", sb.toString());
+            return sb.toString();
         } catch (NoSuchAlgorithmException e) {
             e.printStackTrace();
         }
-        int difficulty = pref.getInt("difficulty", 3);
+        int difficulty = pref.getInt("difficulty", 2);
         return String.format("%0" + difficulty + "d", 0);
     }
 
@@ -246,12 +254,14 @@ public class MainActivity extends AppCompatActivity {
 
     private boolean validate_chain(JSONArray blockchain) throws JSONException {
         JSONObject curr, prev = blockchain.getJSONObject(0);
-        int difficulty = pref.getInt("difficulty", 3);
+        int difficulty = pref.getInt("difficulty", 2);
         for(int i=1; i<blockchain.length(); ++i) {
             curr = blockchain.getJSONObject(i);
+            Log.e("VALIDATE", prev.toString());
             if(!curr.getString("prehash").equals(hash(prev.toString()))) {
                 return false;
             }
+            Log.e("VALIDATE", "2");
             if(!hash(prev + String.valueOf(curr.getInt("nounce"))).substring(0, difficulty).equals(String.format("%0" + difficulty + "d", 0))){
                 return false;
             }
@@ -333,19 +343,21 @@ public class MainActivity extends AppCompatActivity {
 
                     String lb = last_block();
                     long nounce = 0;
-                    int difficulty = pref.getInt("difficulty", 3);
+                    int difficulty = pref.getInt("difficulty", 2);
                     // Proof of Work
                     while (!hash(lb + String.valueOf(nounce)).substring(0, difficulty).equals(String.format("%0" + difficulty + "d", 0))) {
                         nounce++;
                     }
                     // Get Reward
+                    JSONArray all_transactions = new JSONArray(pref.getString("transactions", ""));
                     JSONArray transactions = new JSONArray();
-                    transactions.put(current_transaction);
                     JSONObject transaction = new JSONObject();
                     transaction.put("sender", "0");
                     transaction.put("receiver", pref.getString("num", ""));
                     transaction.put("amount", 0.1);
+                    all_transactions.put(transaction);
                     transactions.put(transaction);
+                    transactions.put(current_transaction);
 
                     // Create New Block
                     JSONArray blockchain = new JSONArray(pref.getString("blockchain", ""));
