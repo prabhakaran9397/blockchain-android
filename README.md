@@ -1,5 +1,5 @@
 # Pay - Blockchain Demo App
-A simple app to demonstrate blockchain. The app scans in the private network for the longest valid chain.
+A simple app to demonstrate blockchain. The app scans the private network for the longest valid chain.
 
 Each transaction is mined as a block.
 
@@ -13,7 +13,7 @@ Genesis Block: 15 to #7200210789
 
 Mining Value: 0.1
 
-Proof Of Work: Previous Block + Nounce
+Proof Of Work: Previous Block + Nonce
 
 Screenshots:
 
